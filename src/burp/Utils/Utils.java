@@ -14,13 +14,16 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.swing.*;
 import java.awt.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Utils {
 
@@ -221,82 +224,127 @@ public class Utils {
   }
 
   public static byte[] byteArrayRegexReplaceFirst(byte[] input, String regex, String replacement) {
-    try {
-      // I need to specify ASCII here because it's the easiest way for me to ensure the byte[] and
-      // resulting string are the same length.
-      String inputString = new String(input, "US-ASCII");
-      Pattern pattern = Pattern.compile(regex);
-      Matcher matcher = pattern.matcher(inputString);
-      // I'll be appending a lot of it's just easier to use a list here
-      ArrayList<Byte> output = new ArrayList<>();
-      // the index of the start of the last match
-      int currentIndex = 0;
-      // Check all occurrences
-      if (matcher.find()) {
+    // I need to specify ASCII here because it's the easiest way for me to ensure the byte[] and
+    // resulting string are the same length.
+    String inputString = new String(input, StandardCharsets.US_ASCII);
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(inputString);
+    // I'll be appending a lot of it's just easier to use a list here
+    ArrayList<Byte> output = new ArrayList<>();
+    // the index of the start of the last match
+    int currentIndex = 0;
+    // Check all occurrences
+    if (matcher.find()) {
+      int start = matcher.start();
+      // Add every item between start of the last match and the current match
+      for (int i = currentIndex; i < start; i++) {
+        output.add(input[i]);
+      }
+      // Add every character in the replacement
+      for (int i = 0; i < replacement.length(); i++) {
+        output.add((byte)replacement.charAt(i));
+      }
+      // Skip over the body of the match
+      currentIndex = matcher.end();
+    } else {
+      //
+      return input;
+    }
+    // Add everything after the last match
+    for (int i = currentIndex; i < input.length; i++) {
+      output.add(input[i]);
+    }
+    return byteArrayListToByteArray(output);
+
+  }
+
+  public static void replaceRecursive(List<ArrayList<Byte>> outputs, byte[] input, Matcher matcher, String replacement, int currentIndex) {
+    ArrayList<Byte> output = new ArrayList<>();
+    int count = 1;
+    while (matcher.find(currentIndex)) {
+      if (count == 1) {
         int start = matcher.start();
         // Add every item between start of the last match and the current match
-        for (int i = currentIndex; i < start; i++) {
+        for (int i = 0; i < start; i++) {
           output.add(input[i]);
         }
         // Add every character in the replacement
         for (int i = 0; i < replacement.length(); i++) {
-          output.add((byte)replacement.charAt(i));
+          output.add((byte) replacement.charAt(i));
         }
         // Skip over the body of the match
         currentIndex = matcher.end();
+
+        for (int i = currentIndex; i < input.length; i++) {
+          output.add(input[i]);
+        }
+        outputs.add(output);
+        replaceRecursive(outputs, byteArrayListToByteArray(output), matcher, replacement, currentIndex);
+
+      } else if (count == 2) {
+        replaceRecursive(outputs, input, matcher, replacement, matcher.start());
+        currentIndex = matcher.end();
       } else {
-        //
-        return input;
+        replaceRecursive(outputs, byteArrayListToByteArray(output), matcher, replacement, matcher.start());
+        currentIndex = matcher.end();
       }
-      // Add everything after the last match
-      for (int i = currentIndex; i < input.length; i++) {
-        output.add(input[i]);
-      }
-      return byteArrayListToByteArray(output);
-    } catch (UnsupportedEncodingException e) {
-      return input;
+      count++;
+
     }
 
   }
 
   public static byte[] byteArrayRegexReplaceAll(byte[] input, String regex, String replacement) {
-    try {
-      // I need to specify ASCII here because it's the easiest way for me to ensure the byte[] and
-      // resulting string are the same length.
-      String inputString = new String(input, "US-ASCII");
-      //String inputString = new String(input, "UTF-16");
-      Pattern pattern = Pattern.compile(regex);
-      Matcher matcher = pattern.matcher(inputString);
-      // I'll be appending a lot of it's just easier to use a list here
-      ArrayList<Byte> output = new ArrayList<>();
-      //BurpExtender.getCallbacks().printOutput("Input Length is: ");
-      //BurpExtender.getCallbacks().printOutput(Integer.toString(input.length));
-      //BurpExtender.getCallbacks().printOutput("Input String Length is: ");
-      //BurpExtender.getCallbacks().printOutput(Integer.toString(inputString.length()));
-      // the index of the start of the last match
-      int currentIndex = 0;
-      // Check all occurrences
-      while (matcher.find()) {
-        int start = matcher.start();
-        // Add every item between start of the last match and the current match
-        for (int i = currentIndex; i < start; i++) {
-          output.add(input[i]);
-        }
-        // Add every character in the replacement
-        for (int i = 0; i < replacement.length(); i++) {
-          output.add((byte)replacement.charAt(i));
-        }
-        // Skip over the body of the match
-        currentIndex = matcher.end();
-      }
-      // Add everything after the last match
-      for (int i = currentIndex; i < input.length; i++) {
+    // I need to specify ASCII here because it's the easiest way for me to ensure the byte[] and
+    // resulting string are the same length.
+    String inputString = new String(input, StandardCharsets.US_ASCII);
+    //String inputString = new String(input, "UTF-16");
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(inputString);
+    // I'll be appending a lot of it's just easier to use a list here
+    ArrayList<Byte> output = new ArrayList<>();
+    //BurpExtender.getCallbacks().printOutput("Input Length is: ");
+    //BurpExtender.getCallbacks().printOutput(Integer.toString(input.length));
+    //BurpExtender.getCallbacks().printOutput("Input String Length is: ");
+    //BurpExtender.getCallbacks().printOutput(Integer.toString(inputString.length()));
+    // the index of the start of the last match
+    int currentIndex = 0;
+    // Check all occurrences
+    while (matcher.find()) {
+      int start = matcher.start();
+      // Add every item between start of the last match and the current match
+      for (int i = currentIndex; i < start; i++) {
         output.add(input[i]);
       }
-      return byteArrayListToByteArray(output);
-    } catch (UnsupportedEncodingException e) {
-      return input;
+      // Add every character in the replacement
+      for (int i = 0; i < replacement.length(); i++) {
+        output.add((byte)replacement.charAt(i));
+      }
+      // Skip over the body of the match
+      currentIndex = matcher.end();
     }
+    // Add everything after the last match
+    for (int i = currentIndex; i < input.length; i++) {
+      output.add(input[i]);
+    }
+    return byteArrayListToByteArray(output);
+  }
+
+  public static List<byte[]> byteArrayRegexReplaceAllPossibilities(byte[] input, String regex, String replacement) {
+    // I need to specify ASCII here because it's the easiest way for me to ensure the byte[] and
+    // resulting string are the same length.
+    String inputString = new String(input, StandardCharsets.US_ASCII);
+    Pattern pattern = Pattern.compile(regex);
+    Matcher matcher = pattern.matcher(inputString);
+    List<ArrayList<Byte>> outputs = new ArrayList<>();
+
+    replaceRecursive(outputs, input, matcher, replacement, 0);
+
+    if (outputs.isEmpty()) {
+      return Collections.singletonList(input);
+    }
+    return outputs.stream().map(Utils::byteArrayListToByteArray).collect(Collectors.toList());
+
   }
 
   public static byte[] byteArrayListToByteArray(ArrayList<Byte> input) {

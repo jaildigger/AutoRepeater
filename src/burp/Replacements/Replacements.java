@@ -61,7 +61,7 @@ public class Replacements {
     c = new GridBagConstraints();
 
     replacementTypeComboBox = new JComboBox<>(Replacement.REPLACEMENT_TYPE_OPTIONS);
-    replacementCountComboBox = new JComboBox<>(Replacement.REPLACEMENT_COUNT_OPTINONS);
+    replacementCountComboBox = new JComboBox<>(Replacement.ReplacementCountOption.stringValues());
     replacementMatchTextField = new JTextField();
     replacementReplaceTextField = new JTextField();
     replacementCommentTextField = new JTextField();

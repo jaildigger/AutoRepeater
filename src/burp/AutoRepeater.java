@@ -17,6 +17,7 @@ import burp.Logs.LogTableModel;
 import burp.Replacements.Replacement;
 import burp.Replacements.ReplacementTableModel;
 import burp.Replacements.Replacements;
+import burp.Utils.AutoRepeaterMenu;
 import burp.Utils.DiffViewerPane;
 import burp.Utils.HttpComparer;
 import burp.Utils.Utils;
@@ -28,8 +29,10 @@ import com.google.gson.JsonObject;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.stream.Collectors;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -662,23 +665,38 @@ public class AutoRepeater implements IMessageEditorController {
       if (meetsConditions) {
         // Create a set to store each new unique request in
         HashSet<IHttpRequestResponse> requestSet = new HashSet<>();
-        IHttpRequestResponse baseReplacedRequestResponse =
-            Utils.cloneIHttpRequestResponse(messageInfo);
         // Perform all the base replacements on the captured request
-        for (Replacement globalReplacement : baseReplacementsTableModel.getReplacements()) {
-          baseReplacedRequestResponse.setRequest(
-              globalReplacement.performReplacement(baseReplacedRequestResponse));
-        }
+        HashSet<IHttpRequestResponse> baseReplacementResponses =
+                baseReplacementsTableModel.getReplacements().stream()
+                        .flatMap(replacement -> {
+                          IHttpRequestResponse baseReplacedRequestResponse =
+                                  Utils.cloneIHttpRequestResponse(messageInfo);
+                          return replacement.performReplacement(baseReplacedRequestResponse).stream();
+                        }).map(r -> {
+                          IHttpRequestResponse response =
+                                  Utils.cloneIHttpRequestResponse(messageInfo);
+                          response.setRequest(r);
+                          return response;
+                        }).collect(Collectors.toCollection(HashSet::new));
+
         //Add the base replaced request to the request set
         if(replacementsTableModel.getReplacements().isEmpty()) {
-          requestSet.add(baseReplacedRequestResponse);
+          requestSet.addAll(baseReplacementResponses);
         }
         // Perform all the separate replacements on the request+base replacements and add them to the set
+
+
         for (Replacement replacement : replacementsTableModel.getReplacements()) {
-          IHttpRequestResponse newHttpRequest = Utils
-              .cloneIHttpRequestResponse(baseReplacedRequestResponse);
-          newHttpRequest.setRequest(replacement.performReplacement(newHttpRequest));
-          requestSet.add(newHttpRequest);
+          for (IHttpRequestResponse baseResponse : baseReplacementResponses) {
+
+            IHttpRequestResponse newHttpRequest = Utils.cloneIHttpRequestResponse(baseResponse);
+            for (byte[] replacedRequest : replacement.performReplacement(newHttpRequest)) {
+              IHttpRequestResponse clonedNewHttpRequest = Utils.cloneIHttpRequestResponse(baseResponse);
+              clonedNewHttpRequest.setRequest(replacedRequest);
+              requestSet.add(clonedNewHttpRequest);
+            }
+
+          }
         }
         // Perform every unique request and log
         //int count = 0;
@@ -688,7 +706,7 @@ public class AutoRepeater implements IMessageEditorController {
             //BurpExtender.getCallbacks().printOutput("Sending Request " + count + " of " + requestSet.size());
             IHttpRequestResponse modifiedRequestResponse =
                 callbacks.makeHttpRequest(messageInfo.getHttpService(), request.getRequest());
-            if(BurpExtender.getAutoRepeaterMenu().sendRequestsToPassiveScanner) {
+            if(AutoRepeaterMenu.sendRequestsToPassiveScanner) {
               BurpExtender.getCallbacks().doPassiveScan(
                   modifiedRequestResponse.getHttpService().getHost(),
                   modifiedRequestResponse.getHttpService().getPort(),
@@ -697,7 +715,7 @@ public class AutoRepeater implements IMessageEditorController {
                   modifiedRequestResponse.getResponse()
               );
             }
-            if(BurpExtender.getAutoRepeaterMenu().addRequestsToSiteMap) {
+            if(AutoRepeaterMenu.addRequestsToSiteMap) {
               BurpExtender.getCallbacks().addToSiteMap(modifiedRequestResponse);
             }
             if (modifiedRequestResponse.getResponse() == null) {
