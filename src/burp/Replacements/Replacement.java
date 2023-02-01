@@ -614,7 +614,7 @@ public class Replacement {
                 Matcher matcher = pattern.matcher(firstRequestString);
                 List<ArrayList<Byte>> outputs = new ArrayList<>();
 
-                Utils.replaceRecursive(outputs, firstRequestString.getBytes(StandardCharsets.US_ASCII), matcher, getReplace(), 0);
+                Utils.replaceRecursive(outputs, firstRequestString.getBytes(StandardCharsets.US_ASCII), matcher, getReplace(), 0, firstRequestString, pattern);
 
                 List<String> lines = outputs.stream().map(Utils::byteArrayListToByteArray).map(String::new).collect(Collectors.toList());
 

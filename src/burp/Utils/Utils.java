@@ -258,37 +258,36 @@ public class Utils {
 
   }
 
-  public static void replaceRecursive(List<ArrayList<Byte>> outputs, byte[] input, Matcher matcher, String replacement, int currentIndex) {
+  public static void replaceRecursive(List<ArrayList<Byte>> outputs, byte[] input, Matcher matcher, String replacement, int currentIndex, String inputString, Pattern pattern) {
     ArrayList<Byte> output = new ArrayList<>();
     int count = 1;
-    while (matcher.find(currentIndex)) {
-      if (count == 1) {
-        int start = matcher.start();
-        // Add every item between start of the last match and the current match
-        for (int i = 0; i < start; i++) {
-          output.add(input[i]);
-        }
-        // Add every character in the replacement
-        for (int i = 0; i < replacement.length(); i++) {
-          output.add((byte) replacement.charAt(i));
-        }
-        // Skip over the body of the match
-        currentIndex = matcher.end();
-
-        for (int i = currentIndex; i < input.length; i++) {
-          output.add(input[i]);
-        }
-        outputs.add(output);
-        replaceRecursive(outputs, byteArrayListToByteArray(output), matcher, replacement, currentIndex);
-
-      } else if (count == 2) {
-        replaceRecursive(outputs, input, matcher, replacement, matcher.start());
-        currentIndex = matcher.end();
-      } else {
-        replaceRecursive(outputs, byteArrayListToByteArray(output), matcher, replacement, matcher.start());
-        currentIndex = matcher.end();
+    Matcher newMatcher = pattern.matcher(inputString);
+    if (matcher.find(currentIndex)) {
+      int start = matcher.start();
+      // Add every item between start of the last match and the current match
+      for (int i = 0; i < start; i++) {
+        output.add(input[i]);
       }
-      count++;
+      // Add every character in the replacement
+      for (int i = 0; i < replacement.length(); i++) {
+        output.add((byte) replacement.charAt(i));
+      }
+      // Skip over the body of the match
+      currentIndex = output.size();
+
+      for (int i = matcher.end(); i < input.length; i++) {
+        output.add(input[i]);
+      }
+      outputs.add(output);
+      replaceRecursive(outputs, byteArrayListToByteArray(output), newMatcher, replacement, currentIndex, inputString, pattern);
+
+      while (matcher.find()) {
+        replaceRecursive(outputs, input, newMatcher, replacement, matcher.start(), inputString, pattern);
+        if (count > 2) {
+          replaceRecursive(outputs, byteArrayListToByteArray(output), newMatcher, replacement, matcher.start(), inputString, pattern);
+        }
+        count++;
+      }
 
     }
 
@@ -338,7 +337,7 @@ public class Utils {
     Matcher matcher = pattern.matcher(inputString);
     List<ArrayList<Byte>> outputs = new ArrayList<>();
 
-    replaceRecursive(outputs, input, matcher, replacement, 0);
+    replaceRecursive(outputs, input, matcher, replacement, 0, inputString, pattern);
 
     if (outputs.isEmpty()) {
       return Collections.singletonList(input);
