@@ -140,8 +140,7 @@ public class Replacement {
         List<IParameter> parameters = analyzedRequest.getParameters().stream()
                 .filter(p -> p.getType() == parameterType)
                 .collect(Collectors.toList());
-        List<IParameter> originalParameters = new ArrayList<>(parameters.size());
-        Collections.copy(originalParameters, parameters);
+        List<IParameter> originalParameters = new ArrayList<>(parameters);
 
         //for (IParameter param : originalParameters) {
         //  BurpExtender.getCallbacks().printOutput(param.getName());
@@ -175,11 +174,10 @@ public class Replacement {
                 return Collections.singletonList(rebuildRequestParams(request, helpers, parameters, originalParameters));
             }
         } else {
-            List<List<IParameter>> paramLists = new ArrayList<>();
+            HashSet<List<IParameter>> paramLists = new HashSet<>();
             replaceParamsRecursive(paramLists, parameters, 0, matchAndReplaceType, helpers);
-            if (paramLists.isEmpty())
-                paramLists.add(parameters);
-            return paramLists.stream().map(p -> rebuildRequestParams(request, helpers, p, originalParameters)).collect(Collectors.toList());
+            if (!paramLists.isEmpty())
+                return paramLists.stream().map(p -> rebuildRequestParams(request, helpers, p, originalParameters)).collect(Collectors.toList());
 
         }
         // Return the modified request
@@ -250,24 +248,29 @@ public class Replacement {
     }
 
 
-    private void replaceParamsRecursive(List<List<IParameter>> paramLists, List<IParameter> original, int index, MatchAndReplaceType matchAndReplaceType, IExtensionHelpers helpers) {
+    private void replaceParamsRecursive(HashSet<List<IParameter>> paramLists, List<IParameter> original, int index, MatchAndReplaceType matchAndReplaceType, IExtensionHelpers helpers) {
         if (index > original.size())
             return;
 
         int count = 1;
+        List<IParameter> newList = new ArrayList<>(original);
         for (int i = index; i < original.size(); i++) {
             IParameter currentParameter = original.get(i);
             if (parameterMatches(currentParameter, matchAndReplaceType)) {
-                List<IParameter> newList = new ArrayList<>(original.size());
-                Collections.copy(newList, original);
 
                 if (count == 1) {
-                    replaceParameter(null, currentParameter, matchAndReplaceType, i + 1, newList, helpers);
+                    replaceParameter(null, currentParameter, matchAndReplaceType, i, newList, helpers);
                     paramLists.add(newList);
-                    replaceParamsRecursive(paramLists, newList, i + 1, matchAndReplaceType, helpers);
-                } else if (count == 2) {
-                    replaceParamsRecursive(paramLists, original, i + 1, matchAndReplaceType, helpers);
-                } else replaceParamsRecursive(paramLists, newList, i, matchAndReplaceType, helpers);
+                    if (newList.size() < original.size()) {
+                        replaceParamsRecursive(paramLists, newList, i, matchAndReplaceType, helpers);
+                    } else {
+                        replaceParamsRecursive(paramLists, newList, i + 1, matchAndReplaceType, helpers);
+                    }
+
+                } else if (count == 2 && newList.size() == original.size()) {
+                    replaceParamsRecursive(paramLists, original, i, matchAndReplaceType, helpers);
+                } else if (count > 2 && newList.size() == original.size())
+                    replaceParamsRecursive(paramLists, newList, i, matchAndReplaceType, helpers);
                 count++;
             }
         }
@@ -309,26 +312,23 @@ public class Replacement {
                 headers = headers.stream().map(h -> matches(h) ? this.replace : h).collect(Collectors.toList());
                 break;
             case REPLACE_ALL_POSSIBILITIES:
-                List<List<String>> headersLists = new ArrayList<>();
+                HashSet<List<String>> headersLists = new HashSet<>();
                 replaceHeadersRecursive(headersLists, headers, 0, this::matches, (h) -> h);
-                if (headersLists.isEmpty()) {
-                    headersLists.add(headers);
-                }
-                return headersLists.stream().map(l -> helpers.buildHttpMessage(l, body)).collect(Collectors.toList());
+                if (!headersLists.isEmpty())
+                    return headersLists.stream().map(l -> helpers.buildHttpMessage(l, body)).collect(Collectors.toList());
         }
 
         return Collections.singletonList(helpers.buildHttpMessage(headers, body));
     }
 
-    private void replaceHeadersRecursive(List<List<String>> headersLists, List<String> original, int index, Function<String, Boolean> matchingFunc, Function<String, String> operation) {
+    private void replaceHeadersRecursive(HashSet<List<String>> headersLists, List<String> original, int index, Function<String, Boolean> matchingFunc, Function<String, String> operation) {
         if (index >= original.size())
             return;
         int count = 1;
         for (int i = index; i < original.size(); i++) {
             String h = original.get(i);
             if (matchingFunc.apply(h)) {
-                List<String> newList = new ArrayList<>(original.size());
-                Collections.copy(newList, original);
+                List<String> newList = new ArrayList<>(original);
 
                 if (count == 1) {
                     newList.set(i, operation.apply(h));
@@ -389,7 +389,7 @@ public class Replacement {
                 }).collect(Collectors.toList());
                 break;
             case REPLACE_ALL_POSSIBILITIES:
-                List<List<String>> headersLists = new ArrayList<>();
+                HashSet<List<String>> headersLists = new HashSet<>();
                 replaceHeadersRecursive(headersLists, headers, 0, (h) -> {
                     String[] split = h.split(":", 2);
                     if (split.length == 2) {
@@ -401,10 +401,8 @@ public class Replacement {
                         return split[0] + ": " + this.replace;
                     } else return h;
                 });
-                if (headersLists.isEmpty()) {
-                    headersLists.add(headers);
-                }
-                return headersLists.stream().map(l -> helpers.buildHttpMessage(l, body)).collect(Collectors.toList());
+                if (!headersLists.isEmpty())
+                    return headersLists.stream().map(l -> helpers.buildHttpMessage(l, body)).collect(Collectors.toList());
         }
 
         return Collections.singletonList(helpers.buildHttpMessage(headers, body));
@@ -537,18 +535,17 @@ public class Replacement {
                         .filter(h -> !(matches(h.split(":")[0]))).collect(Collectors.toList());
                 break;
             case REPLACE_ALL_POSSIBILITIES:
-                List<List<String>> headersLists = new ArrayList<>();
+                HashSet<List<String>> headersLists = new HashSet<>();
                 for (ListIterator<String> it = analyzedRequest.getHeaders().listIterator(); it.hasNext(); ) {
                     String header = it.next();
                     if (matches(header.split(":")[0])) {
                         it.remove();
-                        List<String> newList = new ArrayList<>(analyzedRequest.getHeaders().size());
-                        Collections.copy(newList, analyzedRequest.getHeaders());
+                        List<String> newList = new ArrayList<>(analyzedRequest.getHeaders());
                         headersLists.add(newList);
                     }
                 }
-                if (headersLists.isEmpty()) headersLists.add(analyzedRequest.getHeaders());
-                return headersLists.stream().map(hl -> helpers.buildHttpMessage(hl, body)).collect(Collectors.toList());
+                if (!headersLists.isEmpty())
+                    return headersLists.stream().map(hl -> helpers.buildHttpMessage(hl, body)).collect(Collectors.toList());
 
         }
 
@@ -572,18 +569,17 @@ public class Replacement {
                         .filter(h -> !(matches(h.split(":")[1]))).collect(Collectors.toList());
                 break;
             case REPLACE_ALL_POSSIBILITIES:
-                List<List<String>> headersLists = new ArrayList<>();
+                HashSet<List<String>> headersLists = new HashSet<>();
                 for (ListIterator<String> it = analyzedRequest.getHeaders().listIterator(); it.hasNext(); ) {
                     String header = it.next();
                     if (matches(header.split(":")[1])) {
                         it.remove();
-                        List<String> newList = new ArrayList<>(analyzedRequest.getHeaders().size());
-                        Collections.copy(newList, analyzedRequest.getHeaders());
+                        List<String> newList = new ArrayList<>(analyzedRequest.getHeaders());
                         headersLists.add(newList);
                     }
                 }
-                if (headersLists.isEmpty()) headersLists.add(analyzedRequest.getHeaders());
-                return headersLists.stream().map(hl -> helpers.buildHttpMessage(hl, body)).collect(Collectors.toList());
+                if (!headersLists.isEmpty())
+                    return headersLists.stream().map(hl -> helpers.buildHttpMessage(hl, body)).collect(Collectors.toList());
 
         }
 
@@ -614,7 +610,7 @@ public class Replacement {
                 Matcher matcher = pattern.matcher(firstRequestString);
                 List<ArrayList<Byte>> outputs = new ArrayList<>();
 
-                Utils.replaceRecursive(outputs, firstRequestString.getBytes(StandardCharsets.US_ASCII), matcher, getReplace(), 0, firstRequestString, pattern);
+                Utils.replaceRecursive(outputs, firstRequestString.getBytes(StandardCharsets.US_ASCII), matcher, getMatch(), getReplace(), 0, firstRequestString, pattern);
 
                 List<String> lines = outputs.stream().map(Utils::byteArrayListToByteArray).map(String::new).collect(Collectors.toList());
 
