@@ -29,9 +29,11 @@ import com.google.gson.JsonObject;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -672,7 +674,8 @@ public class AutoRepeater implements IMessageEditorController {
                           IHttpRequestResponse baseReplacedRequestResponse =
                                   Utils.cloneIHttpRequestResponse(messageInfo);
                           return replacement.performReplacement(baseReplacedRequestResponse).stream();
-                        }).map(r -> {
+                        }).filter(distinctByBytes(b -> new String(b, StandardCharsets.US_ASCII)))
+                        .map(r -> {
                           IHttpRequestResponse response =
                                   Utils.cloneIHttpRequestResponse(messageInfo);
                           response.setRequest(r);
@@ -690,7 +693,9 @@ public class AutoRepeater implements IMessageEditorController {
           for (IHttpRequestResponse baseResponse : baseReplacementResponses) {
 
             IHttpRequestResponse newHttpRequest = Utils.cloneIHttpRequestResponse(baseResponse);
-            for (byte[] replacedRequest : replacement.performReplacement(newHttpRequest)) {
+            HashSet<byte[]> distinctReplacedRequests = new HashSet<>(replacement.performReplacement(newHttpRequest));
+
+            for (byte[] replacedRequest : distinctReplacedRequests) {
               IHttpRequestResponse clonedNewHttpRequest = Utils.cloneIHttpRequestResponse(baseResponse);
               clonedNewHttpRequest.setRequest(replacedRequest);
               requestSet.add(clonedNewHttpRequest);
@@ -735,6 +740,11 @@ public class AutoRepeater implements IMessageEditorController {
         }
       }
     }
+  }
+
+  private Predicate<byte[]> distinctByBytes(Function<byte[], Object> extractor) {
+    Map<Object, Boolean> map = new ConcurrentHashMap<>();
+    return t -> map.putIfAbsent(extractor.apply(t), Boolean.TRUE) == null;
   }
 
   public LogTableModel getLogTableModel() {
